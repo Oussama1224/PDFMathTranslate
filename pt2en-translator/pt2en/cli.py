@@ -147,11 +147,10 @@ def cmd_doctor(args: argparse.Namespace, settings: Settings) -> int:
         ok = False
         print(f"  [fail] OCR unavailable: {ocr.reason}")
     fonts = FontResolver(None, extra_dirs=settings.font_dirs)
-    for family, files in FAMILY_FILES.items():
-        found = fonts._find_file(files[0])
-        print(
-            f"  [{'ok' if found else 'warn'}]   font family {family}: {found or 'not found (fallback used)'}"
-        )
+    for family in FAMILY_FILES:
+        found = fonts.family_file(family)
+        status = found or "not found (Base-14 fallback used)"
+        print(f"  [{'ok' if found else 'warn'}]   font family {family}: {status}")
     for p in list_providers(settings):
         mark = "ok" if p["available"] else "--"
         default = " (default)" if p["default"] else ""

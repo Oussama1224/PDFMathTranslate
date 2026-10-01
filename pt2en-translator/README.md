@@ -54,7 +54,8 @@ engine prefers (Carlito ≈ Calibri, Caladea ≈ Cambria, Liberation ≈ Arial/T
 ### Local installation
 
 Requirements: Python 3.10–3.14, Tesseract OCR with the Portuguese language pack, and (recommended)
-the fonts above.
+the fonts above. On Windows and macOS nothing extra is needed: the system's own Calibri, Cambria,
+Arial, Times New Roman and Courier New are used instead.
 
 ```bash
 # Debian / Ubuntu
@@ -291,7 +292,7 @@ Each stage sits behind a small interface, so engines can be swapped without touc
 | "OCR unavailable" in the header | Hover over it (or run `pt2en doctor`) to see why. Install Tesseract with the Portuguese language; if it lives somewhere unusual, set `PT2EN_TESSERACT_CMD` in `.env` and restart `pt2en serve`. |
 | "The translation provider … is not configured" | Set `ANTHROPIC_API_KEY` (or another provider's key) in `.env` and restart. |
 | Requests rejected mentioning *fallback* | Set `PT2EN_ANTHROPIC_FALLBACKS=none` (gateway without beta support). |
-| Fonts look different from the original | Install `fonts-crosextra-carlito`/`caladea` and `fonts-liberation`, or point `PT2EN_FONT_DIRS` at the original fonts. |
+| Fonts look different from the original / `pt2en doctor` warns about font families | Linux: install `fonts-crosextra-carlito`/`caladea` and `fonts-liberation`. Windows/macOS: the system fonts are found automatically; for other fonts point `PT2EN_FONT_DIRS` at the folder that holds them. |
 | Many "untranslated Portuguese" items | Check the provider (the demo dictionary is intentionally incomplete) and the glossary `[keep]` entries. |
 
 ## License

@@ -5,7 +5,8 @@ Preference order for a run of text:
 1. the original embedded font of the run, when it contains real glyphs for
    every character of the English text (subset fonts often miss k/w/y);
 2. a metric-compatible open font for well-known families (Carlito for
-   Calibri, Caladea for Cambria, Liberation for Arial/Times/Courier);
+   Calibri, Caladea for Cambria, Liberation for Arial/Times/Courier), or the
+   original family itself from the Windows / macOS system fonts;
 3. a generic serif / sans / mono family matching the original style;
 4. MuPDF's built-in Base-14 fonts (always available);
 5. a broad-coverage Unicode font for any glyph still missing.
@@ -35,42 +36,51 @@ DEFAULT_FONT_DIRS = [
     "/usr/share/fonts/truetype/noto",
     "/usr/share/fonts/opentype/noto",
     "/usr/share/fonts/TTF",
+    "/usr/share/fonts/truetype/msttcorefonts",
     "/Library/Fonts",
+    "/System/Library/Fonts/Supplemental",
     os.path.expanduser("~/Library/Fonts"),
     os.path.expandvars("$LOCALAPPDATA/Microsoft/Windows/Fonts"),  # per-user installs
     "C:/Windows/Fonts",
 ]
 
+# Candidate files for the regular, bold, italic and bold-italic variant of each
+# family: the open metric-compatible font first, then the Windows file name
+# (C:\Windows\Fonts), then the macOS one (/System/Library/Fonts/Supplemental).
 FAMILY_FILES = {
     "carlito": (
-        "Carlito-Regular.ttf",
-        "Carlito-Bold.ttf",
-        "Carlito-Italic.ttf",
-        "Carlito-BoldItalic.ttf",
+        ("Carlito-Regular.ttf", "calibri.ttf"),
+        ("Carlito-Bold.ttf", "calibrib.ttf"),
+        ("Carlito-Italic.ttf", "calibrii.ttf"),
+        ("Carlito-BoldItalic.ttf", "calibriz.ttf"),
     ),
     "caladea": (
-        "Caladea-Regular.ttf",
-        "Caladea-Bold.ttf",
-        "Caladea-Italic.ttf",
-        "Caladea-BoldItalic.ttf",
+        ("Caladea-Regular.ttf", "cambria.ttc"),
+        ("Caladea-Bold.ttf", "cambriab.ttf"),
+        ("Caladea-Italic.ttf", "cambriai.ttf"),
+        ("Caladea-BoldItalic.ttf", "cambriaz.ttf"),
     ),
     "sans": (
-        "LiberationSans-Regular.ttf",
-        "LiberationSans-Bold.ttf",
-        "LiberationSans-Italic.ttf",
-        "LiberationSans-BoldItalic.ttf",
+        ("LiberationSans-Regular.ttf", "arial.ttf", "Arial.ttf"),
+        ("LiberationSans-Bold.ttf", "arialbd.ttf", "Arial Bold.ttf"),
+        ("LiberationSans-Italic.ttf", "ariali.ttf", "Arial Italic.ttf"),
+        ("LiberationSans-BoldItalic.ttf", "arialbi.ttf", "Arial Bold Italic.ttf"),
     ),
     "serif": (
-        "LiberationSerif-Regular.ttf",
-        "LiberationSerif-Bold.ttf",
-        "LiberationSerif-Italic.ttf",
-        "LiberationSerif-BoldItalic.ttf",
+        ("LiberationSerif-Regular.ttf", "times.ttf", "Times New Roman.ttf"),
+        ("LiberationSerif-Bold.ttf", "timesbd.ttf", "Times New Roman Bold.ttf"),
+        ("LiberationSerif-Italic.ttf", "timesi.ttf", "Times New Roman Italic.ttf"),
+        (
+            "LiberationSerif-BoldItalic.ttf",
+            "timesbi.ttf",
+            "Times New Roman Bold Italic.ttf",
+        ),
     ),
     "mono": (
-        "LiberationMono-Regular.ttf",
-        "LiberationMono-Bold.ttf",
-        "LiberationMono-Italic.ttf",
-        "LiberationMono-BoldItalic.ttf",
+        ("LiberationMono-Regular.ttf", "cour.ttf", "Courier New.ttf"),
+        ("LiberationMono-Bold.ttf", "courbd.ttf", "Courier New Bold.ttf"),
+        ("LiberationMono-Italic.ttf", "couri.ttf", "Courier New Italic.ttf"),
+        ("LiberationMono-BoldItalic.ttf", "courbi.ttf", "Courier New Bold Italic.ttf"),
     ),
 }
 BASE14 = {
@@ -78,7 +88,13 @@ BASE14 = {
     "serif": ("tiro", "tibo", "tiit", "tibi"),
     "mono": ("cour", "cobo", "coit", "cobi"),
 }
-UNICODE_FALLBACK_FILES = ("DejaVuSans.ttf", "NotoSans-Regular.ttf", "FreeSans.ttf")
+UNICODE_FALLBACK_FILES = (
+    "DejaVuSans.ttf",
+    "NotoSans-Regular.ttf",
+    "FreeSans.ttf",
+    "seguisym.ttf",  # Windows: Segoe UI Symbol
+    "Arial Unicode.ttf",  # macOS
+)
 
 _FAMILY_RULES = [
     (re.compile(r"calibri|carlito", re.I), "carlito"),
@@ -157,6 +173,21 @@ class FontResolver:
                         log.warning("cannot load font %s: %s", path, exc)
                 self._file_cache[name] = font
             return self._file_cache[name]
+
+    def _load_any(self, names: tuple[str, ...]) -> Optional[tuple[pymupdf.Font, str]]:
+        for name in names:
+            font = self._load_file(name)
+            if font:
+                return font, name
+        return None
+
+    def family_file(self, family: str, idx: int = 0) -> Optional[Path]:
+        """The file used for a family variant, if any is installed."""
+        for name in FAMILY_FILES[family][idx]:
+            path = self._find_file(name)
+            if path:
+                return path
+        return None
 
     def _base14(self, family: str, idx: int) -> pymupdf.Font:
         key = "base14:" + BASE14[family][idx]
@@ -245,20 +276,20 @@ class FontResolver:
         family = self.family_for(style)
         idx = _variant_index(style)
         if family in FAMILY_FILES:
-            font = self._load_file(FAMILY_FILES[family][idx]) or self._load_file(
+            found = self._load_any(FAMILY_FILES[family][idx]) or self._load_any(
                 FAMILY_FILES[family][0]
             )
-            if font:
-                return ResolvedFont(font, FAMILY_FILES[family][idx])
+            if found:
+                return ResolvedFont(*found)
         generic = (
             "serif"
             if family == "caladea"
             else "sans" if family == "carlito" else family
         )
         if generic in FAMILY_FILES:
-            font = self._load_file(FAMILY_FILES[generic][idx])
-            if font:
-                return ResolvedFont(font, FAMILY_FILES[generic][idx])
+            found = self._load_any(FAMILY_FILES[generic][idx])
+            if found:
+                return ResolvedFont(*found)
         return ResolvedFont(
             self._base14(generic if generic in BASE14 else "serif", idx),
             BASE14.get(generic, BASE14["serif"])[idx],
