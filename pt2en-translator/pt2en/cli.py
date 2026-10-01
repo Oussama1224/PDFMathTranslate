@@ -136,14 +136,16 @@ def cmd_doctor(args: argparse.Namespace, settings: Settings) -> int:
         settings.ocr_engine, settings.ocr_languages, settings.tesseract_cmd
     )
     if ocr.available():
-        print(f"  [ok]   OCR: {ocr.name} (languages: {getattr(ocr, 'languages', '')})")
+        where = f" at {ocr.path}" if getattr(ocr, "path", None) else ""
+        print(
+            f"  [ok]   OCR: {ocr.name}{where} "
+            f"(languages: {getattr(ocr, 'languages', '')})"
+        )
         if "por" not in getattr(ocr, "languages", ""):
-            print("  [warn] Portuguese OCR data missing: install tesseract-ocr-por")
+            print(f"  [warn] {ocr.reason or 'Portuguese OCR data missing'}")
     else:
         ok = False
-        print(
-            "  [fail] OCR engine unavailable: install Tesseract (tesseract-ocr, tesseract-ocr-por)"
-        )
+        print(f"  [fail] OCR unavailable: {ocr.reason}")
     fonts = FontResolver(None, extra_dirs=settings.font_dirs)
     for family, files in FAMILY_FILES.items():
         found = fonts._find_file(files[0])

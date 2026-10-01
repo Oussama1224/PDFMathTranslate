@@ -61,7 +61,7 @@ def test_request_shape_and_parsing(provider, monkeypatch):
         [Segment("u0", "A <b>média</b> <m1/>.", section="2.1 Introdução")], ctx
     )
     assert out == {"u0": "The <b>mean</b> <m1/>."}
-    assert captured["model"] == "claude-opus-5-5"
+    assert captured["model"] == "claude-sonnet-5-5"
     assert captured["betas"] == [FALLBACK_BETA] and captured["fallbacks"] == "default"
     assert captured["output_config"]["format"]["type"] == "json_schema"
     assert captured["output_config"]["effort"] == "high"

@@ -113,6 +113,11 @@ async function loadConfig() {
     $("#translateImages").checked = d.translate_images;
     $("#ocrEnabled").checked = d.ocr_enabled && cfg.ocr.available;
     $("#ocrEnabled").disabled = !cfg.ocr.available;
+    if (cfg.ocr.reason) {
+      const hint = $("#ocrHint");
+      hint.textContent = cfg.ocr.reason;
+      hint.classList.toggle("warn", !cfg.ocr.available || cfg.ocr.reason.includes("missing"));
+    }
     $("#localizeNumbers").checked = d.localize_numbers;
     $("#qaMode").value = d.qa_review;
     updateEngine();
@@ -135,6 +140,9 @@ function updateEngine() {
   if (name === "anthropic") label = `Claude · ${cfg.anthropic_model}`;
   el.className = "engine " + (name === "demo" ? "demo" : p && p.available ? "ok" : "bad");
   $("#engineText").textContent = label + (cfg.ocr.available ? " · OCR ready" : " · OCR unavailable");
+  el.title = cfg.ocr.available
+    ? `OCR: Tesseract (${cfg.ocr.languages})${cfg.ocr.path ? " at " + cfg.ocr.path : ""}`
+    : `OCR unavailable: ${cfg.ocr.reason}`;
   $("#providerHint").textContent =
     name === "demo"
       ? "Demo mode uses a small offline dictionary to exercise the pipeline. Configure ANTHROPIC_API_KEY for real translations."

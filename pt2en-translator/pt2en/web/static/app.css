@@ -163,6 +163,7 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 13px; margin-t
 .toggle input:focus-visible + .switch { outline: 2px solid var(--primary); outline-offset: 2px; }
 .toggle strong { display: block; font-size: 14px; font-weight: 600; }
 .toggle small { display: block; color: var(--muted); font-size: 12.5px; }
+.toggle small.warn { color: var(--warning); }
 
 .disclosure { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; background: var(--surface-2); }
 .disclosure.flat { border: 0; padding: 0; background: none; }

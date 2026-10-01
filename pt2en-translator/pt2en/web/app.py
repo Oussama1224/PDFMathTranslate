@@ -135,6 +135,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "ocr": {
                 "available": ocr.available(),
                 "languages": getattr(ocr, "languages", ""),
+                "path": getattr(ocr, "path", None),
+                "reason": ocr.reason,
             },
             "limits": {
                 "max_upload_mb": settings.max_upload_mb,

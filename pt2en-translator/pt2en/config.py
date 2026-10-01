@@ -71,7 +71,7 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("ANTHROPIC_API_KEY", "PT2EN_ANTHROPIC_API_KEY"),
     )
-    anthropic_model: str = "claude-opus-5-5"
+    anthropic_model: str = "claude-sonnet-5-5"
     anthropic_effort: str = "high"
     # "default" enables server-side refusal fallbacks; "none" disables them
     # (useful behind gateways that do not support the beta parameter).

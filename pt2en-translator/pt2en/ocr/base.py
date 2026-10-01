@@ -12,6 +12,8 @@ from pt2en.model import OCRWord, Rect, union_rects
 
 class OCREngine(abc.ABC):
     name = "base"
+    #: human-readable explanation when the engine is unavailable or degraded
+    reason: str = ""
 
     @abc.abstractmethod
     def available(self) -> bool: ...
@@ -29,6 +31,9 @@ class OCREngine(abc.ABC):
 
 class NullOCR(OCREngine):
     name = "none"
+
+    def __init__(self, reason: str = "OCR is disabled (PT2EN_OCR_ENGINE=none)."):
+        self.reason = reason
 
     def available(self) -> bool:
         return False
