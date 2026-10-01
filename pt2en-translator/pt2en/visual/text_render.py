@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -19,21 +20,31 @@ SANS_FILES = {
         "LiberationSans-Regular.ttf",
         "DejaVuSans.ttf",
         "FreeSans.ttf",
-        "Arial.ttf",
+        "Arial.ttf",  # macOS
+        "arial.ttf",  # Windows
     ],
     (True, False): [
         "LiberationSans-Bold.ttf",
         "DejaVuSans-Bold.ttf",
         "FreeSansBold.ttf",
-        "Arial Bold.ttf",
+        "Arial Bold.ttf",  # macOS
+        "arialbd.ttf",  # Windows
     ],
 }
 SERIF_FILES = {
-    (False, False): ["LiberationSerif-Regular.ttf", "DejaVuSerif.ttf", "FreeSerif.ttf"],
+    (False, False): [
+        "LiberationSerif-Regular.ttf",
+        "DejaVuSerif.ttf",
+        "FreeSerif.ttf",
+        "Times New Roman.ttf",  # macOS
+        "times.ttf",  # Windows
+    ],
     (True, False): [
         "LiberationSerif-Bold.ttf",
         "DejaVuSerif-Bold.ttf",
         "FreeSerifBold.ttf",
+        "Times New Roman Bold.ttf",  # macOS
+        "timesbd.ttf",  # Windows
     ],
 }
 FONT_DIRS = [
@@ -42,6 +53,8 @@ FONT_DIRS = [
     "/usr/share/fonts/truetype/dejavu",
     "/usr/share/fonts/truetype/freefont",
     "/Library/Fonts",
+    "/System/Library/Fonts/Supplemental",
+    os.path.expandvars("$LOCALAPPDATA/Microsoft/Windows/Fonts"),  # per-user installs
     "C:/Windows/Fonts",
 ]
 

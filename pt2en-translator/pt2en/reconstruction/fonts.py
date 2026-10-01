@@ -36,6 +36,8 @@ DEFAULT_FONT_DIRS = [
     "/usr/share/fonts/opentype/noto",
     "/usr/share/fonts/TTF",
     "/Library/Fonts",
+    os.path.expanduser("~/Library/Fonts"),
+    os.path.expandvars("$LOCALAPPDATA/Microsoft/Windows/Fonts"),  # per-user installs
     "C:/Windows/Fonts",
 ]
 
