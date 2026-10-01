@@ -1,0 +1,56 @@
+name: pt2en-translator
+
+on:
+  push:
+    paths:
+      - "pt2en-translator/**"
+      - ".github/workflows/pt2en-translator.yml"
+  pull_request:
+    paths:
+      - "pt2en-translator/**"
+      - ".github/workflows/pt2en-translator.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: pt2en-translator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pt2en-translator/pyproject.toml
+      - name: System dependencies (OCR + fonts)
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-por \
+            fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu-core
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: |
+          black --check pt2en tests conftest.py
+          flake8 pt2en tests conftest.py
+      - name: Tests
+        run: pytest -q
+      - name: Sample workflow (offline demo provider)
+        run: |
+          python -m pt2en doctor || true
+          python -m pt2en sample curso_exemplo_pt.pdf
+          PT2EN_TRANSLATOR=demo python -m pt2en translate curso_exemplo_pt.pdf -o course-en.pdf --review course-en-review.pdf -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sample-output-${{ matrix.python-version }}
+          path: |
+            pt2en-translator/curso_exemplo_pt.pdf
+            pt2en-translator/course-en.pdf
+            pt2en-translator/course-en-review.pdf
+            pt2en-translator/course-en.qa.json

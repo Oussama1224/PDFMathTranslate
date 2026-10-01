@@ -34,6 +34,11 @@ English | [简体中文](docs/README_zh-CN.md) | [繁體中文](docs/README_zh-T
 
 </div>
 
+> [!TIP]
+> **PT→EN Course PDF Translator** ([`pt2en-translator/`](pt2en-translator/README.md)) — a web application in this
+> repository that translates European Portuguese (pt-PT) course PDFs into English while preserving layout, formulas,
+> tables, charts, text inside images and scanned pages, with automatic quality control and an annotated review PDF.
+
 PDF scientific paper translation and bilingual comparison.
 
 - 📊 Preserve formulas, charts, table of contents, and annotations _([preview](#preview))_.

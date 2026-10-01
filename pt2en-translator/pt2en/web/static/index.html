@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PT→EN Course PDF Translator</title>
+  <meta name="description" content="Translate European Portuguese course PDFs into English while preserving layout, formulas, tables, charts and images.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232d5be3'/%3E%3Cpath d='M18 20h16a8 8 0 0 1 0 16h-8v10h-8z M26 28v0' fill='none' stroke='white' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='M40 40l8 4-8 4' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="PT to EN Course PDF Translator — home">
+      <span class="logo" aria-hidden="true">PT<span class="arrow">→</span>EN</span>
+      <span class="brand-text">
+        <span class="brand-title">Course PDF Translator</span>
+        <span class="brand-sub">European Portuguese → English · layout, formulas &amp; figures preserved</span>
+      </span>
+    </a>
+    <div class="engine" id="engine" title="Translation engine"><span class="dot"></span><span id="engineText">Connecting…</span></div>
+  </header>
+
+  <main id="main">
+    <!-- ============================== UPLOAD ============================== -->
+    <section id="view-upload" class="view" aria-labelledby="upload-title">
+      <div class="upload-grid">
+        <div class="card upload-card">
+          <h2 id="upload-title" class="card-title">1 · Choose a document</h2>
+          <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-describedby="drop-hint">
+            <svg class="drop-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 6h14l10 10v24a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M28 6v10h10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M25 35V22m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <p class="drop-title">Drop your Portuguese PDF here</p>
+            <p class="drop-or">or <span class="link">browse your files</span></p>
+            <p class="hint" id="drop-hint">PDF · up to <span id="limitMb">100</span> MB · <span id="limitPages">500</span> pages</p>
+            <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+          </div>
+
+          <div id="fileInfo" class="file-info" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+            <div class="file-meta"><strong id="fileName"></strong><span id="fileSize"></span></div>
+            <button type="button" class="icon-btn" id="clearFile" aria-label="Remove file">✕</button>
+          </div>
+
+          <div id="uploadBox" class="upload-progress" hidden>
+            <div class="bar"><div id="uploadBar"></div></div>
+            <div class="bar-label"><span id="uploadText">Uploading…</span><span id="uploadPct">0%</span></div>
+          </div>
+
+          <p class="sample-row">No document at hand? <button type="button" class="link" id="sampleBtn">Use the sample course chapter</button></p>
+
+          <ul class="capabilities" aria-label="What is translated">
+            <li>Headings &amp; paragraphs</li><li>Tables</li><li>Formulas kept identical</li>
+            <li>Charts &amp; diagrams</li><li>Text in images (OCR)</li><li>Scanned pages</li>
+            <li>Headers, footers, footnotes</li><li>Automatic QA</li>
+          </ul>
+        </div>
+
+        <form class="card settings-card" id="settingsForm" novalidate>
+          <h2 class="card-title">2 · Translation settings</h2>
+          <div class="field-row">
+            <label class="field">
+              <span class="field-label">Source language</span>
+              <select disabled aria-readonly="true"><option>Portuguese (Portugal)</option></select>
+            </label>
+            <label class="field">
+              <span class="field-label">Target language</span>
+              <select id="variant">
+                <option value="en-GB">English (UK)</option>
+                <option value="en-US">English (US)</option>
+              </select>
+            </label>
+          </div>
+
+          <fieldset class="field">
+            <legend class="field-label">Translation style</legend>
+            <div class="segmented" role="radiogroup">
+              <label><input type="radio" name="style" value="academic" checked><span>Academic</span></label>
+              <label><input type="radio" name="style" value="technical"><span>Technical</span></label>
+              <label><input type="radio" name="style" value="literal"><span>Literal</span></label>
+            </div>
+            <p class="hint" id="styleHint"></p>
+          </fieldset>
+
+          <div class="toggles">
+            <label class="toggle"><input type="checkbox" id="preserveTerms" checked><span class="switch"></span>
+              <span><strong>Preserve original terminology</strong><small>Keep acronyms and official Portuguese names where appropriate</small></span></label>
+            <label class="toggle"><input type="checkbox" id="translateImages" checked><span class="switch"></span>
+              <span><strong>Translate text inside images</strong><small>Charts, diagrams, screenshots and figures</small></span></label>
+            <label class="toggle"><input type="checkbox" id="ocrEnabled" checked><span class="switch"></span>
+              <span><strong>OCR for scanned pages</strong><small>Recognise and translate text in page images</small></span></label>
+            <label class="toggle"><input type="checkbox" id="localizeNumbers"><span class="switch"></span>
+              <span><strong>Localise number format</strong><small>15,5 → 15.5 in running text (formulas never change)</small></span></label>
+          </div>
+
+          <label class="field">
+            <span class="field-label">Quality control</span>
+            <select id="qaMode">
+              <option value="fix">Validate and auto-correct (recommended)</option>
+              <option value="report">Validate and report only</option>
+              <option value="off">Structural checks only</option>
+            </select>
+          </label>
+
+          <details class="disclosure" id="glossaryBox">
+            <summary>Glossary / custom terminology <span class="badge" id="glossaryCount" hidden></span></summary>
+            <textarea id="glossary" rows="5" spellcheck="false" placeholder="unidade curricular = course unit&#10;frequência = mid-term test&#10;ECTS = [keep]"></textarea>
+            <div class="glossary-actions">
+              <button type="button" class="btn small" id="importGlossary">Import CSV / TXT</button>
+              <input type="file" id="glossaryFile" accept=".csv,.txt,.tsv,.json" hidden>
+              <span class="hint">One entry per line: <code>termo = term</code>. Use <code>[keep]</code> to keep the Portuguese term. These overrides are always enforced.</span>
+            </div>
+          </details>
+
+          <details class="disclosure">
+            <summary>Translation engine</summary>
+            <label class="field">
+              <span class="field-label">Provider</span>
+              <select id="provider"></select>
+            </label>
+            <p class="hint" id="providerHint"></p>
+          </details>
+
+          <button type="submit" class="btn primary large" id="startBtn" disabled>
+            <span>Translate PDF</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <p class="form-error" id="formError" role="alert" hidden></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============================= PROGRESS ============================= -->
+    <section id="view-progress" class="view" hidden aria-labelledby="prog-title">
+      <div class="card progress-card">
+        <div class="progress-head">
+          <div>
+            <p class="eyebrow">Translating</p>
+            <h2 id="prog-title" class="doc-title"></h2>
+            <p class="muted" id="progMeta"></p>
+          </div>
+          <button type="button" class="btn ghost" id="cancelBtn">Cancel</button>
+        </div>
+        <ol class="stepper" id="stepper"></ol>
+        <div class="overall">
+          <div class="bar large"><div id="overallBar"></div></div>
+          <div class="bar-label"><strong id="overallPct">0%</strong><span id="etaText">Estimating time…</span></div>
+        </div>
+        <p class="stage-msg" id="stageMsg" aria-live="polite"></p>
+        <ul class="activity" id="activity" aria-label="Activity log"></ul>
+      </div>
+    </section>
+
+    <!-- ============================== RESULT ============================== -->
+    <section id="view-result" class="view" hidden aria-labelledby="result-title">
+      <div class="card result-head">
+        <div class="result-summary">
+          <div class="score" id="scoreRing" aria-label="Quality score"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" class="track"/><circle cx="20" cy="20" r="17" class="value" id="scoreArc"/></svg><span id="scoreValue">–</span></div>
+          <div>
+            <p class="eyebrow" id="statusBadge">Completed</p>
+            <h2 id="result-title" class="doc-title"></h2>
+            <p class="muted" id="resultMeta"></p>
+            <div class="counts" id="counts"></div>
+          </div>
+        </div>
+        <div class="result-actions">
+          <a class="btn primary" id="dlTranslated" href="#" download>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download English PDF</a>
+          <a class="btn" id="dlReview" href="#" download>Review PDF (annotated)</a>
+          <a class="btn" id="dlReport" href="#" download>QA report (JSON)</a>
+          <button type="button" class="btn ghost" id="newDocBtn">Translate another document</button>
+        </div>
+      </div>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="result-body">
+        <div class="card viewer">
+          <div class="viewer-toolbar">
+            <div class="tabs" role="tablist">
+              <button role="tab" class="tab active" data-mode="split" aria-selected="true">Side by side</button>
+              <button role="tab" class="tab" data-mode="original" aria-selected="false">Original</button>
+              <button role="tab" class="tab" data-mode="translated" aria-selected="false">English</button>
+            </div>
+            <div class="viewer-controls">
+              <button type="button" class="icon-btn" id="prevPage" aria-label="Previous page">‹</button>
+              <span class="page-indicator"><input id="pageInput" type="number" min="1" value="1" aria-label="Page number"> / <span id="pageTotal">1</span></span>
+              <button type="button" class="icon-btn" id="nextPage" aria-label="Next page">›</button>
+              <span class="sep"></span>
+              <button type="button" class="icon-btn" id="zoomOut" aria-label="Zoom out">−</button>
+              <span id="zoomText">100%</span>
+              <button type="button" class="icon-btn" id="zoomIn" aria-label="Zoom in">+</button>
+              <span class="sep"></span>
+              <label class="mini-toggle"><input type="checkbox" id="showIssues" checked> QA highlights</label>
+            </div>
+          </div>
+          <div class="panes split" id="panes">
+            <div class="pane" id="paneOriginal"><div class="pane-label">Original (PT)</div><div class="pages"></div></div>
+            <div class="pane" id="paneTranslated"><div class="pane-label">English</div><div class="pages"></div></div>
+          </div>
+        </div>
+
+        <aside class="sidebar">
+          <div class="card">
+            <h3 class="card-title small">Quality checks</h3>
+            <ul class="checks" id="checks"></ul>
+          </div>
+          <div class="card">
+            <div class="issues-head">
+              <h3 class="card-title small">Items to review <span class="badge" id="issueCount">0</span></h3>
+              <div class="filters" id="issueFilters">
+                <button class="chip active" data-sev="all">All</button>
+                <button class="chip" data-sev="error">Errors</button>
+                <button class="chip" data-sev="warning">Warnings</button>
+                <button class="chip" data-sev="info">Info</button>
+              </div>
+            </div>
+            <ul class="issues" id="issues"></ul>
+          </div>
+          <div class="card">
+            <details class="disclosure flat">
+              <summary>Terminology used <span class="badge" id="glossUsed">0</span></summary>
+              <div class="table-wrap"><table class="gloss" id="glossTable"><thead><tr><th>Portuguese</th><th>English</th><th>Source</th></tr></thead><tbody></tbody></table></div>
+            </details>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- =============================== ERROR =============================== -->
+    <section id="view-error" class="view" hidden>
+      <div class="card error-card" role="alert">
+        <div class="error-icon" aria-hidden="true">!</div>
+        <h2 id="errorTitle">The document could not be translated</h2>
+        <p id="errorMessage"></p>
+        <p class="muted small" id="errorDetail"></p>
+        <button type="button" class="btn primary" id="retryBtn">Try another document</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span id="versionText"></span>
+    <span>Formulas, numbers and images are preserved from the source. Review flagged items before publishing.</span>
+  </footer>
+
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>

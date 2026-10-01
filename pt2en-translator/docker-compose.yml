@@ -1,0 +1,14 @@
+services:
+  pt2en:
+    build: .
+    image: pt2en-translator:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - pt2en-data:/data
+    restart: unless-stopped
+
+volumes:
+  pt2en-data:

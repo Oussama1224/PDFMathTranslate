@@ -1,0 +1,45 @@
+[project]
+name = "pt2en-translator"
+version = "1.0.0"
+description = "Layout-preserving European Portuguese (PT-PT) to English translator for course PDFs"
+readme = "README.md"
+license = "AGPL-3.0"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "pymupdf>=1.26.0",
+    "numpy>=1.24",
+    "opencv-python-headless>=4.8",
+    "pillow>=10.0",
+    "pytesseract>=0.3.10",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.9",
+    "anthropic>=1.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.30"]
+deepl = ["deepl>=1.16"]
+argos = ["argostranslate>=1.9"]
+layout = ["onnxruntime>=1.16", "huggingface_hub>=0.20"]
+dev = ["pytest>=8", "httpx>=0.27", "black>=24", "flake8>=7"]
+
+[project.scripts]
+pt2en = "pt2en.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pt2en"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
