@@ -53,7 +53,7 @@ engine prefers (Carlito ≈ Calibri, Caladea ≈ Cambria, Liberation ≈ Arial/T
 
 ### Local installation
 
-Requirements: Python 3.10–3.13, Tesseract OCR with the Portuguese language pack, and (recommended)
+Requirements: Python 3.10–3.14, Tesseract OCR with the Portuguese language pack, and (recommended)
 the fonts above.
 
 ```bash
