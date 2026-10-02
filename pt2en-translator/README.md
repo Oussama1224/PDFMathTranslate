@@ -215,6 +215,7 @@ list. The most important ones:
 | `ANTHROPIC_API_KEY` | – | Claude API key. |
 | `PT2EN_ANTHROPIC_MODEL` / `PT2EN_ANTHROPIC_EFFORT` | `claude-sonnet-5-5` / `high` | Model and effort level. |
 | `PT2EN_OPENAI_MODEL` / `PT2EN_OPENAI_MAX_TOKENS` | `gpt-4o` (NVIDIA: chosen automatically) / endpoint default (NVIDIA: 16384, halved if a model rejects it) | Model and output limit for the OpenAI-compatible provider. |
+| `PT2EN_OPENAI_REASONING_EFFORT` / `PT2EN_OPENAI_TEMPERATURE` / `PT2EN_OPENAI_STREAM` | model default / `0.1` / `true` | Reasoning effort for thinking models such as Kimi K3 (`low`…`max`, higher is slower and uses more of the output limit), sampling temperature, and streamed replies (keeps long answers from timing out). Parameters a model rejects are dropped automatically. |
 | `PT2EN_STYLE` / `PT2EN_ENGLISH_VARIANT` | `academic` / `en-GB` | Defaults for new jobs. |
 | `PT2EN_OCR_LANGUAGES` | `por+eng` | Tesseract languages. |
 | `PT2EN_TESSERACT_CMD` | auto | Path to `tesseract(.exe)` or its folder. Found automatically on PATH, in `Program Files\Tesseract-OCR`, and in `Tesseract` / `Tesseract-OCR` at the root of any Windows drive. On Windows write it with forward slashes and no quotes: `D:/Tesseract/tesseract.exe`. |

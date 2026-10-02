@@ -9,7 +9,7 @@ import json
 import logging
 import re
 import threading
-from typing import Any
+from typing import Any, Optional
 
 from pt2en.config import Settings
 from pt2en.errors import ProviderConfigurationError
@@ -183,6 +183,11 @@ class OpenAICompatibleTranslator(Translator):
         # think before answering, so leave room; halved if a model rejects it.
         self.max_tokens = settings.openai_max_tokens or (16384 if self.nvidia else None)
         self._format = FORMATS[0]
+        # optional request parameters, each dropped if the endpoint rejects it
+        self.optional: dict[str, Any] = {"temperature": settings.openai_temperature}
+        if settings.openai_reasoning_effort:
+            self.optional["reasoning_effort"] = settings.openai_reasoning_effort
+        self.stream = settings.openai_stream
 
     def describe(self) -> str:
         name = self.model or "auto"
@@ -260,6 +265,9 @@ class OpenAICompatibleTranslator(Translator):
             kwargs["response_format"] = {"type": "json_object"}
         if self.max_tokens:
             kwargs["max_tokens"] = self.max_tokens
+        kwargs.update(self.optional)
+        if self.stream:
+            kwargs["stream"] = True
         model = self._resolve_model()
         try:
             resp = self.client.chat.completions.create(
@@ -268,11 +276,12 @@ class OpenAICompatibleTranslator(Translator):
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": user},
                 ],
-                temperature=0.1,
                 **kwargs,
             )
+            content, finish_reason = self._read(resp)
         except openai.BadRequestError as exc:
             message = str(exc)
+            rejected = next((k for k in self.optional if k in message), None)
             if _TOO_LONG.search(message):
                 raise TranslationError(f"Response truncated: {message}") from exc
             if self.max_tokens and _MAX_TOKENS.search(message):
@@ -280,6 +289,12 @@ class OpenAICompatibleTranslator(Translator):
                     self.max_tokens // 2 if self.max_tokens > 2048 else None
                 )
                 log.info("endpoint rejected the output limit; now %s", self.max_tokens)
+            elif rejected:
+                log.info("endpoint rejected %s; sending it no more", rejected)
+                del self.optional[rejected]
+            elif self.stream and re.search(r"\bstream", message, re.I):
+                log.info("endpoint rejected streaming; using plain requests")
+                self.stream = False
             elif fmt != FORMATS[-1]:
                 self._format = FORMATS[FORMATS.index(fmt) + 1]
                 log.info(
@@ -301,13 +316,36 @@ class OpenAICompatibleTranslator(Translator):
             return self._call(system, user, schema, name)
         except openai.APIError as exc:
             raise TranslationError(str(exc)) from exc
-        choice = resp.choices[0]
-        if choice.finish_reason == "length":
+        if finish_reason == "length":
             raise TranslationError("Response truncated.")
         try:
-            return parse_json_reply(choice.message.content or "")
+            return parse_json_reply(content)
         except json.JSONDecodeError as exc:
             raise TranslationError("Invalid JSON returned by the model.") from exc
+
+    def _read(self, resp: Any) -> tuple[str, Optional[str]]:
+        """(answer text, finish reason) from a plain or streamed completion.
+
+        Reasoning arrives separately (delta.reasoning_content) and is ignored.
+        """
+        if hasattr(resp, "choices"):
+            choice = resp.choices[0]
+            return choice.message.content or "", choice.finish_reason
+        parts: list[str] = []
+        finish_reason = None
+        try:
+            for chunk in resp:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                if choice.delta is not None and choice.delta.content:
+                    parts.append(choice.delta.content)
+                finish_reason = choice.finish_reason or finish_reason
+        except self._openai.APIError:
+            raise
+        except Exception as exc:  # connection dropped mid-stream
+            raise TranslationError(f"Reply stream interrupted: {exc}") from exc
+        return "".join(parts), finish_reason
 
     def translate_batch(
         self, segments: list[Segment], ctx: TranslationContext

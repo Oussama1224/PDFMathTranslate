@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     # Output-token limit per request; unset = endpoint default (16384 for NVIDIA,
     # whose own default is too small for a translation batch).
     openai_max_tokens: Optional[int] = None
+    # Reasoning models (e.g. Kimi, GLM): low | medium | high | max, sent as
+    # reasoning_effort; unset = the model's default. Dropped if a model rejects it.
+    openai_reasoning_effort: Optional[str] = None
+    openai_temperature: float = 0.1
+    # Stream replies so long answers from large models are not cut off by gateways.
+    openai_stream: bool = True
 
     deepl_api_key: Optional[str] = Field(
         default=None,

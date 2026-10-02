@@ -335,3 +335,72 @@ def test_settings_warning_names_missing_env_file(tmp_path, monkeypatch):
     s.openai_api_key = None
     warning = config_module.settings_warning(s)
     assert "No .env file found" in warning and "rename it to .env" in warning
+
+
+def chunk(content=None, finish_reason=None, reasoning=None):
+    delta = SimpleNamespace(content=content, reasoning_content=reasoning)
+    return SimpleNamespace(
+        choices=[SimpleNamespace(delta=delta, finish_reason=finish_reason)]
+    )
+
+
+def test_streamed_reply_ignores_reasoning(settings, monkeypatch):
+    settings.openai_api_key = "nvapi-test"
+    settings.openai_model = "moonshotai/kimi-k3"
+    settings.openai_reasoning_effort = "high"
+    provider = OpenAICompatibleTranslator(settings)
+    captured = {}
+    text = json.dumps(REPLY)
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return iter(
+            [
+                chunk(reasoning="Thinking about European Portuguese..."),
+                SimpleNamespace(choices=[]),  # usage-only chunk
+                chunk(text[:10]),
+                chunk(text[10:]),
+                chunk(finish_reason="stop"),
+            ]
+        )
+
+    monkeypatch.setattr(provider.client.chat.completions, "create", create)
+    assert translate(provider) == {"u0": "The <b>mean</b> <m1/>."}
+    assert captured["stream"] is True
+    assert captured["model"] == "moonshotai/kimi-k3"
+    assert captured["reasoning_effort"] == "high"
+    assert captured["temperature"] == 0.1
+
+
+def test_streamed_truncation_is_reported(nvidia, monkeypatch):
+    monkeypatch.setattr(
+        nvidia.client.chat.completions,
+        "create",
+        lambda **kw: iter([chunk('{"translations": ['), chunk(finish_reason="length")]),
+    )
+    with pytest.raises(TranslationError, match="truncated"):
+        translate(nvidia)
+
+
+def test_rejected_optional_parameters_are_dropped(settings, monkeypatch):
+    settings.openai_api_key = "nvapi-test"
+    settings.openai_model = "moonshotai/kimi-k3"
+    settings.openai_reasoning_effort = "max"
+    provider = OpenAICompatibleTranslator(settings)
+    calls = []
+
+    def create(**kwargs):
+        calls.append(dict(kwargs))
+        if "reasoning_effort" in kwargs:
+            raise api_error(
+                openai.BadRequestError, 400, "Unsupported parameter: reasoning_effort"
+            )
+        if kwargs.get("stream"):
+            raise api_error(openai.BadRequestError, 400, "stream is not supported")
+        return completion(json.dumps(REPLY))
+
+    monkeypatch.setattr(provider.client.chat.completions, "create", create)
+    assert translate(provider) == {"u0": "The <b>mean</b> <m1/>."}
+    assert len(calls) == 3
+    assert "reasoning_effort" not in calls[-1] and "stream" not in calls[-1]
+    assert calls[-1]["response_format"]["type"] == "json_schema"  # format kept
