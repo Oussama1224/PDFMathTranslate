@@ -138,6 +138,7 @@ function updateEngine() {
   const el = $("#engine");
   let label = p ? p.label.split(" — ")[0] : name;
   if (name === "anthropic") label = `Claude · ${cfg.anthropic_model}`;
+  if (name === "openai" && cfg.openai_label) label = cfg.openai_label;
   el.className = "engine " + (name === "demo" ? "demo" : p && p.available ? "ok" : "bad");
   $("#engineText").textContent = label + (cfg.ocr.available ? " · OCR ready" : " · OCR unavailable");
   el.title = cfg.ocr.available

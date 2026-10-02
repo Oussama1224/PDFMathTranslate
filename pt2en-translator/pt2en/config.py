@@ -15,6 +15,9 @@ from typing import Optional
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+NVIDIA_DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+
 
 class TranslationStyle(str, Enum):
     ACADEMIC = "academic"
@@ -40,6 +43,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
+        # blank lines such as "OPENAI_API_KEY=" mean "not set", so an alias
+        # (NVIDIA_API_KEY) or the default still applies
+        env_ignore_empty=True,
     )
 
     # ------------------------------------------------------------------ server
@@ -78,12 +84,20 @@ class Settings(BaseSettings):
     anthropic_fallbacks: str = "default"
     anthropic_max_tokens: int = 32000
 
+    # Any OpenAI-compatible chat-completions endpoint. An NVIDIA key (nvapi-...)
+    # selects NVIDIA's hosted API automatically.
     openai_api_key: Optional[str] = Field(
         default=None,
-        validation_alias=AliasChoices("OPENAI_API_KEY", "PT2EN_OPENAI_API_KEY"),
+        validation_alias=AliasChoices(
+            "OPENAI_API_KEY", "PT2EN_OPENAI_API_KEY", "NVIDIA_API_KEY"
+        ),
     )
-    openai_model: str = "gpt-4o"
+    # unset = gpt-4o, or meta/llama-3.3-70b-instruct on NVIDIA
+    openai_model: Optional[str] = None
     openai_base_url: Optional[str] = None
+    # Output-token limit per request; unset = endpoint default (4096 for NVIDIA,
+    # whose own default is too small for a translation batch).
+    openai_max_tokens: Optional[int] = None
 
     deepl_api_key: Optional[str] = Field(
         default=None,
@@ -121,6 +135,24 @@ class Settings(BaseSettings):
     @property
     def resolved_cache_path(self) -> Path:
         return self.cache_path or (self.data_dir / "translation_memory.sqlite3")
+
+    @property
+    def openai_endpoint(self) -> Optional[str]:
+        if self.openai_base_url:
+            return self.openai_base_url
+        if (self.openai_api_key or "").startswith("nvapi-"):
+            return NVIDIA_BASE_URL
+        return None
+
+    @property
+    def openai_is_nvidia(self) -> bool:
+        return "nvidia.com" in (self.openai_endpoint or "")
+
+    @property
+    def openai_model_name(self) -> str:
+        if self.openai_model:
+            return self.openai_model
+        return NVIDIA_DEFAULT_MODEL if self.openai_is_nvidia else "gpt-4o"
 
     def provider_available(self, name: str) -> bool:
         if name == "anthropic":

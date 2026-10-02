@@ -132,6 +132,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "providers": providers,
             "default_provider": default,
             "anthropic_model": settings.anthropic_model,
+            "openai_label": (
+                f"{'NVIDIA' if settings.openai_is_nvidia else 'OpenAI-compatible'}"
+                f" · {settings.openai_model_name}"
+            ),
             "ocr": {
                 "available": ocr.available(),
                 "languages": getattr(ocr, "languages", ""),

@@ -160,6 +160,7 @@ pt2en doctor                     # environment check
 | --- | --- | --- |
 | **Claude (Anthropic)** — default | `PT2EN_TRANSLATOR=anthropic`, `ANTHROPIC_API_KEY` | Model `claude-sonnet-5-5` by default (`PT2EN_ANTHROPIC_MODEL`), effort `high`. Uses structured JSON output, a prompt-cached system prompt (style guide + full glossary), automatic terminology extraction and an accuracy review pass. Server-side refusal fallbacks are enabled (`PT2EN_ANTHROPIC_FALLBACKS=none` to disable). |
 | OpenAI-compatible | `openai`, `OPENAI_API_KEY`, `PT2EN_OPENAI_BASE_URL`, `PT2EN_OPENAI_MODEL` | Any chat-completions endpoint (OpenAI, Azure, OpenRouter, vLLM, Ollama…). `pip install -e ".[openai]"`. |
+| NVIDIA (build.nvidia.com) | `openai`, `NVIDIA_API_KEY=nvapi-…`, optional `PT2EN_OPENAI_MODEL` | Uses the OpenAI-compatible provider; an `nvapi-` key selects `https://integrate.api.nvidia.com/v1` automatically. Default model `meta/llama-3.3-70b-instruct`; any chat model ID from the catalog works (non-reasoning instruct models are fastest). Replies in code fences or with `<think>` blocks are handled. `pip install -e ".[openai]"`. |
 | DeepL | `deepl`, `DEEPL_API_KEY` | XML tag handling keeps markup and formulas; mandatory terms are sent as a DeepL glossary. `pip install -e ".[deepl]"`. |
 | Argos Translate | `argos` | Fully offline neural MT (downloads the pt→en model once). Inline styles are not preserved. `pip install -e ".[argos]"`. |
 | Demo | `demo` | Offline dictionary for testing only. |
@@ -213,6 +214,7 @@ list. The most important ones:
 | `PT2EN_TRANSLATOR` | `anthropic` | Default provider (`anthropic`, `openai`, `deepl`, `argos`, `demo`). |
 | `ANTHROPIC_API_KEY` | – | Claude API key. |
 | `PT2EN_ANTHROPIC_MODEL` / `PT2EN_ANTHROPIC_EFFORT` | `claude-sonnet-5-5` / `high` | Model and effort level. |
+| `PT2EN_OPENAI_MODEL` / `PT2EN_OPENAI_MAX_TOKENS` | `gpt-4o` (NVIDIA: `meta/llama-3.3-70b-instruct`) / endpoint default (NVIDIA: 4096) | Model and output limit for the OpenAI-compatible provider. |
 | `PT2EN_STYLE` / `PT2EN_ENGLISH_VARIANT` | `academic` / `en-GB` | Defaults for new jobs. |
 | `PT2EN_OCR_LANGUAGES` | `por+eng` | Tesseract languages. |
 | `PT2EN_TESSERACT_CMD` | auto | Path to `tesseract(.exe)` or its folder. Found automatically on PATH, in `Program Files\Tesseract-OCR`, and in `Tesseract` / `Tesseract-OCR` at the root of any Windows drive. On Windows write it with forward slashes and no quotes: `D:/Tesseract/tesseract.exe`. |
