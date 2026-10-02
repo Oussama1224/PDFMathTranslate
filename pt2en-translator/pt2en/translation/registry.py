@@ -63,6 +63,7 @@ def list_providers(settings: Settings) -> list[dict]:
             "name": key,
             "label": label,
             "available": settings.provider_available(key),
+            "problem": settings.provider_problem(key),
             "default": key == default,
         }
         for key, (label, _) in PROVIDERS.items()

@@ -105,6 +105,7 @@ main { flex: 1; width: 100%; max-width: 1480px; margin: 0 auto; padding: 28px; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.hint.warn { color: var(--warning); }
 
 /* ------------------------------------------------------------------ upload */
 .upload-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 24px; align-items: start; }

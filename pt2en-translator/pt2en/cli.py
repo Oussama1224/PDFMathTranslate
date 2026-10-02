@@ -21,7 +21,9 @@ from pt2en.config import (
     QAReviewMode,
     Settings,
     TranslationStyle,
+    env_files_found,
     get_settings,
+    settings_warning,
 )
 from pt2en.errors import PipelineError
 
@@ -154,10 +156,15 @@ def cmd_doctor(args: argparse.Namespace, settings: Settings) -> int:
     for p in list_providers(settings):
         mark = "ok" if p["available"] else "--"
         default = " (default)" if p["default"] else ""
-        print(f"  [{mark}]   provider {p['name']}{default}: {p['label']}")
-    if not settings.provider_available(settings.translator):
+        why = f" ({p['problem']})" if p["problem"] else ""
+        print(f"  [{mark}]   provider {p['name']}{default}: {p['label']}{why}")
+    files = env_files_found()
+    for path in files:
+        print(f"  [ok]   settings: {path}")
+    warning = settings_warning(settings)
+    if warning:
         ok = False
-        print(f"  [fail] default provider '{settings.translator}' is not configured")
+        print(f"  [fail] {warning}")
     print(f"  data dir: {settings.data_dir.resolve()}")
     return 0 if ok else 1
 

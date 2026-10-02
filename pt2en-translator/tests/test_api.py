@@ -99,3 +99,20 @@ def test_access_token(settings, sample_pdf):
             == 200
         )
         assert c.get("/api/config?token=secret").status_code == 200
+
+
+def test_config_explains_missing_provider_key(settings, monkeypatch, tmp_path):
+    from pt2en import config as config_module
+
+    settings.translator = "openai"
+    settings.openai_api_key = None
+    settings.openai_base_url = None
+    monkeypatch.setattr(config_module, "env_files_found", lambda: [tmp_path / ".env"])
+    app = create_app(settings)
+    with TestClient(app) as c:
+        cfg = c.get("/api/config").json()
+    assert cfg["default_provider"] == "demo"
+    assert cfg["configured_provider"] == "openai"
+    assert "NVIDIA_API_KEY" in cfg["settings_warning"]
+    openai_entry = next(p for p in cfg["providers"] if p["name"] == "openai")
+    assert not openai_entry["available"] and "NVIDIA_API_KEY" in openai_entry["problem"]

@@ -167,3 +167,16 @@ def test_nvidia_alias_and_blank_lines(tmp_path, monkeypatch):
     assert s.openai_endpoint == NVIDIA_BASE_URL
     assert s.openai_model_name == "meta/llama-3.3-70b-instruct"
     assert s.provider_available("openai")
+
+
+def test_settings_warning_names_missing_env_file(tmp_path, monkeypatch):
+    from pt2en import config as config_module
+
+    (tmp_path / ".env.txt").write_text("NVIDIA_API_KEY=nvapi-abc\n")
+    monkeypatch.setattr(
+        config_module, "ENV_FILES", (tmp_path / ".env", tmp_path / "sub" / ".env")
+    )
+    s = config_module.Settings(_env_file=None, translator="openai")
+    s.openai_api_key = None
+    warning = config_module.settings_warning(s)
+    assert "No .env file found" in warning and "rename it to .env" in warning

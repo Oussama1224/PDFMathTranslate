@@ -32,7 +32,9 @@ from pt2en.config import (
     QAReviewMode,
     Settings,
     TranslationStyle,
+    env_files_found,
     get_settings,
+    settings_warning,
 )
 from pt2en.errors import InvalidDocumentError
 from pt2en.pipeline.options import JobOptions
@@ -132,6 +134,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "providers": providers,
             "default_provider": default,
             "anthropic_model": settings.anthropic_model,
+            "configured_provider": settings.translator,
+            "settings_files": [str(p) for p in env_files_found()],
+            "settings_warning": settings_warning(settings),
             "openai_label": (
                 f"{'NVIDIA' if settings.openai_is_nvidia else 'OpenAI-compatible'}"
                 f" · {settings.openai_model_name}"
@@ -199,7 +204,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         if not settings.provider_available(provider):
             raise HTTPException(
                 status_code=422,
-                detail=f"The translation provider '{provider}' is not configured on the server.",
+                detail=f"The translation provider '{provider}' is not configured "
+                f"on the server: {settings.provider_problem(provider)}",
             )
         try:
             job = await asyncio.to_thread(

@@ -15,6 +15,13 @@ from typing import Optional
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# .env is read from the project folder (pt2en-translator/, for a source checkout)
+# and from the working directory; the working directory wins.
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+ENV_FILES = (PROJECT_DIR / ".env", Path(".env"))
+# Names an editor or browser may give the file by accident.
+MISNAMED_ENV_FILES = (".env.txt", "env", "env.txt", "_env")
+
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
 
@@ -39,7 +46,7 @@ class QAReviewMode(str, Enum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PT2EN_",
-        env_file=".env",
+        env_file=ENV_FILES,
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
@@ -154,21 +161,60 @@ class Settings(BaseSettings):
             return self.openai_model
         return NVIDIA_DEFAULT_MODEL if self.openai_is_nvidia else "gpt-4o"
 
-    def provider_available(self, name: str) -> bool:
+    def provider_problem(self, name: str) -> str:
+        """Why a provider cannot be used ("" when it can)."""
         if name == "anthropic":
-            return bool(self.anthropic_api_key)
+            return "" if self.anthropic_api_key else "ANTHROPIC_API_KEY is not set."
         if name == "openai":
-            return bool(self.openai_api_key) or bool(self.openai_base_url)
+            if not (self.openai_api_key or self.openai_base_url):
+                return "No API key: set NVIDIA_API_KEY or OPENAI_API_KEY."
+            return _missing_package("openai", "openai")
         if name == "deepl":
-            return bool(self.deepl_api_key)
+            if not self.deepl_api_key:
+                return "DEEPL_API_KEY is not set."
+            return _missing_package("deepl", "deepl")
         if name == "argos":
-            try:
-                import argostranslate  # noqa: F401
+            return _missing_package("argostranslate", "argos")
+        if name in ("demo", "mock"):
+            return ""
+        return f"Unknown translation provider '{name}'."
 
-                return True
-            except ImportError:
-                return False
-        return name in ("demo", "mock")
+    def provider_available(self, name: str) -> bool:
+        return not self.provider_problem(name)
+
+
+def _missing_package(module: str, extra: str) -> str:
+    try:
+        __import__(module)
+        return ""
+    except ImportError:
+        return f"The {module} package is not installed: " f'pip install -e ".[{extra}]"'
+
+
+def env_files_found() -> list[Path]:
+    """The .env files that were read, in load order."""
+    found: list[Path] = []
+    for path in ENV_FILES:
+        path = path.resolve()
+        if path.is_file() and path not in found:
+            found.append(path)
+    return found
+
+
+def settings_warning(settings: "Settings") -> str:
+    """A configuration problem worth showing to the user, or ""."""
+    if not env_files_found():
+        folders = sorted({str(p.resolve().parent) for p in ENV_FILES})
+        message = "No .env file found (looked in " + " and ".join(folders) + ")."
+        for folder in folders:
+            for name in MISNAMED_ENV_FILES:
+                if (Path(folder) / name).is_file():
+                    message += f" Found {Path(folder) / name}: rename it to .env."
+        return message
+    problem = settings.provider_problem(settings.translator)
+    if problem:
+        return f"PT2EN_TRANSLATOR={settings.translator}, but: {problem}"
+    return ""
 
 
 @lru_cache(maxsize=1)

@@ -102,6 +102,7 @@ async function loadConfig() {
     for (const p of cfg.providers) {
       const opt = new Option(p.label + (p.available ? "" : " — not configured"), p.name);
       opt.disabled = !p.available;
+      if (p.problem) opt.title = p.problem;
       sel.add(opt);
     }
     sel.value = cfg.default_provider;
@@ -144,9 +145,13 @@ function updateEngine() {
   el.title = cfg.ocr.available
     ? `OCR: Tesseract (${cfg.ocr.languages})${cfg.ocr.path ? " at " + cfg.ocr.path : ""}`
     : `OCR unavailable: ${cfg.ocr.reason}`;
-  $("#providerHint").textContent =
-    name === "demo"
-      ? "Demo mode uses a small offline dictionary to exercise the pipeline. Configure ANTHROPIC_API_KEY for real translations."
+  const hint = $("#providerHint");
+  const warning = name === "demo" && cfg.settings_warning;
+  hint.classList.toggle("warn", Boolean(warning));
+  hint.textContent = warning
+    ? `${cfg.settings_warning} Using the demo dictionary until this is fixed (restart pt2en serve after editing .env).`
+    : name === "demo"
+      ? "Demo mode uses a small offline dictionary to exercise the pipeline. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY in .env for real translations."
       : "Translations are produced by " + label + ".";
 }
 
