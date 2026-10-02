@@ -23,7 +23,6 @@ ENV_FILES = (PROJECT_DIR / ".env", Path(".env"))
 MISNAMED_ENV_FILES = (".env.txt", "env", "env.txt", "_env")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-NVIDIA_DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
 
 
 class TranslationStyle(str, Enum):
@@ -99,10 +98,10 @@ class Settings(BaseSettings):
             "OPENAI_API_KEY", "PT2EN_OPENAI_API_KEY", "NVIDIA_API_KEY"
         ),
     )
-    # unset = gpt-4o, or meta/llama-3.3-70b-instruct on NVIDIA
+    # unset = gpt-4o, or on NVIDIA the best chat model the key can use
     openai_model: Optional[str] = None
     openai_base_url: Optional[str] = None
-    # Output-token limit per request; unset = endpoint default (4096 for NVIDIA,
+    # Output-token limit per request; unset = endpoint default (16384 for NVIDIA,
     # whose own default is too small for a translation batch).
     openai_max_tokens: Optional[int] = None
 
@@ -159,7 +158,7 @@ class Settings(BaseSettings):
     def openai_model_name(self) -> str:
         if self.openai_model:
             return self.openai_model
-        return NVIDIA_DEFAULT_MODEL if self.openai_is_nvidia else "gpt-4o"
+        return "auto" if self.openai_is_nvidia else "gpt-4o"
 
     def provider_problem(self, name: str) -> str:
         """Why a provider cannot be used ("" when it can)."""

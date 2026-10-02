@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from typing import Any
 
 from pt2en.config import Settings
@@ -38,8 +39,97 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S | re.I)
 _TOO_LONG = re.compile(
     r"context length|context window|maximum context|too long|too many tokens", re.I
 )
+_MAX_TOKENS = re.compile(
+    r"max_tokens|max_completion_tokens|max_new_tokens|(output|completion) tokens", re.I
+)
 # Response formats, best first; an endpoint that rejects one gets the next.
 FORMATS = ("json_schema", "json_object", "prompt")
+
+
+# Model IDs that are not general chat/instruction models.
+_NOT_CHAT = re.compile(
+    r"embed|rerank|retriev|guard|safety|reward|pii|parse|ocr|vision|(^|[-_/])vl([-_]|$)"
+    r"|clip|coder|code|whisper|asr|tts|audio|riva|translat|cosmos|image|diffusion"
+    r"|flux|sdxl|bge|gliner|kosmos|paligemma|fuyu|neva|vila|llava|deplot|math|chatqa"
+    r"|detect|segment|grounding|usd|pose|kumo|relational|animate|wan2|resolution"
+    r"|ising|parakeet|canary|chatterbox|laguna|(^|[-_])base($|[-_])",
+    re.I,
+)
+# General chat models by translation strength (largest current families first);
+# within a family, full models beat flash/mini variants and newer beats older.
+_PREFERRED = [
+    re.compile(p, re.I)
+    for p in (
+        r"moonshotai/kimi",
+        r"z-ai/glm",
+        r"nvidia/.*nemotron.*ultra",
+        r"deepseek-ai/deepseek-v\d",
+        r"qwen/qwen3",
+        r"mistralai/mistral-(large|medium)",
+        r"meta/llama-4",
+        r"meta/llama-3\.[13]-(70|405)b",
+        r"nvidia/.*nemotron.*super",
+        r"openai/gpt-oss",
+        r"minimaxai/minimax",
+        r"google/gemma-[34]",
+        r"mistralai/",
+        r"meta/llama",
+        r"nvidia/.*nemotron",
+    )
+]
+_SMALL = re.compile(
+    r"nano|mini|small|tiny|lite|flash|lightning|\b(\d|1[0-4])b\b|\be[24]b\b", re.I
+)
+_REASONING = re.compile(r"(^|[-_/])r1($|[-_])|reason|think|qwq", re.I)
+# Consecutive unavailable models tried before giving up in auto mode.
+MAX_MODEL_SWITCHES = 8
+
+
+def rank_chat_models(ids: list[str]) -> list[str]:
+    """Chat models best suited to translation first (newest first within a family)."""
+
+    def key(model: str):
+        family = next(
+            (i for i, p in enumerate(_PREFERRED) if p.search(model)), len(_PREFERRED)
+        )
+        return (
+            family,
+            bool(_SMALL.search(model)),
+            bool(_REASONING.search(model)),
+            "instruct" not in model.lower(),
+            [-ord(c) for c in model],
+        )
+
+    return sorted({m for m in ids if not _NOT_CHAT.search(m)}, key=key)
+
+
+def probe_model(provider: "OpenAICompatibleTranslator", model: str) -> str:
+    """One tiny request to see whether a model answers: "ok" or the reason."""
+    openai = provider._openai
+    try:
+        provider.client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+            max_tokens=5,
+        )
+        return "ok"
+    except openai.APIStatusError as exc:
+        label = "unavailable" if exc.status_code in (403, 404, 410) else "error"
+        return f"{label} ({exc.status_code}: {_error_detail(exc)[:80]})"
+    except openai.APIError as exc:
+        return f"error ({str(exc)[:80]})"
+
+
+def _error_detail(exc: Exception) -> str:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        detail = body.get("detail") or (
+            error.get("message") if isinstance(error, dict) else error
+        )
+        if detail:
+            return str(detail)
+    return str(exc)
 
 
 def parse_json_reply(content: str) -> Any:
@@ -83,12 +173,73 @@ class OpenAICompatibleTranslator(Translator):
             max_retries=4,
             timeout=600,
         )
-        self.model = settings.openai_model_name
-        self.max_tokens = settings.openai_max_tokens or (4096 if self.nvidia else None)
+        # "auto": pick from the models the key can use (NVIDIA retires models often)
+        self.auto_model = settings.openai_model_name == "auto"
+        self.model = None if self.auto_model else settings.openai_model_name
+        self._candidates: list[str] = []
+        self._switches = 0
+        self._model_lock = threading.Lock()
+        # NVIDIA's own default is too small for a batch, and large models often
+        # think before answering, so leave room; halved if a model rejects it.
+        self.max_tokens = settings.openai_max_tokens or (16384 if self.nvidia else None)
         self._format = FORMATS[0]
 
     def describe(self) -> str:
-        return f"{'NVIDIA' if self.nvidia else 'OpenAI-compatible'} ({self.model})"
+        name = self.model or "auto"
+        return f"{'NVIDIA' if self.nvidia else 'OpenAI-compatible'} ({name})"
+
+    # ---------------------------------------------------------------- models
+    def available_models(self) -> list[str]:
+        openai = self._openai
+        try:
+            return [m.id for m in self.client.models.list()]
+        except openai.AuthenticationError as exc:
+            raise ProviderConfigurationError(self._key_rejected()) from exc
+        except openai.APIError as exc:
+            raise TranslationError(f"Could not list models: {exc}") from exc
+
+    def _resolve_model(self) -> str:
+        with self._model_lock:
+            if self.model is None:
+                self._candidates = rank_chat_models(self.available_models())
+                if not self._candidates:
+                    raise ProviderConfigurationError(
+                        "No chat models are available with this API key; "
+                        "set PT2EN_OPENAI_MODEL in .env."
+                    )
+                self.model = self._candidates[0]
+                log.info("model chosen automatically: %s", self.model)
+            return self.model
+
+    def _model_unavailable(self, model: str, exc: Exception) -> None:
+        """A model was retired or is not accessible: switch (auto) or explain."""
+        detail = _error_detail(exc)
+        if not self.auto_model:
+            raise ProviderConfigurationError(
+                f"Model '{model}' is not available: {detail} "
+                "Run `pt2en models` to list the models your key can use, then set "
+                "PT2EN_OPENAI_MODEL in .env (or leave it empty to choose automatically)."
+            ) from exc
+        with self._model_lock:
+            if model in self._candidates:
+                self._candidates.remove(model)
+            if self.model != model:
+                return  # another request already switched
+            self._switches += 1
+            if not self._candidates or self._switches > MAX_MODEL_SWITCHES:
+                raise ProviderConfigurationError(
+                    f"No working chat model found (last: '{model}': {detail}). "
+                    "Run `pt2en models --check` and set PT2EN_OPENAI_MODEL in .env."
+                ) from exc
+            self.model = self._candidates[0]
+            log.warning(
+                "model %s unavailable (%s); trying %s", model, detail, self.model
+            )
+
+    def _key_rejected(self) -> str:
+        return "The API key was rejected by " + (
+            "NVIDIA." if self.nvidia else "the OpenAI-compatible endpoint."
+        )
 
     def _call(self, system: str, user: str, schema: dict, name: str) -> Any:
         openai = self._openai
@@ -109,9 +260,10 @@ class OpenAICompatibleTranslator(Translator):
             kwargs["response_format"] = {"type": "json_object"}
         if self.max_tokens:
             kwargs["max_tokens"] = self.max_tokens
+        model = self._resolve_model()
         try:
             resp = self.client.chat.completions.create(
-                model=self.model,
+                model=model,
                 messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": user},
@@ -123,9 +275,11 @@ class OpenAICompatibleTranslator(Translator):
             message = str(exc)
             if _TOO_LONG.search(message):
                 raise TranslationError(f"Response truncated: {message}") from exc
-            if self.max_tokens and "max_tokens" in message.lower():
-                log.info("endpoint rejected max_tokens; using its default")
-                self.max_tokens = None
+            if self.max_tokens and _MAX_TOKENS.search(message):
+                self.max_tokens = (
+                    self.max_tokens // 2 if self.max_tokens > 2048 else None
+                )
+                log.info("endpoint rejected the output limit; now %s", self.max_tokens)
             elif fmt != FORMATS[-1]:
                 self._format = FORMATS[FORMATS.index(fmt) + 1]
                 log.info(
@@ -138,15 +292,13 @@ class OpenAICompatibleTranslator(Translator):
                 raise TranslationError(message) from exc
             return self._call(system, user, schema, name)
         except openai.AuthenticationError as exc:
-            raise ProviderConfigurationError(
-                "The API key was rejected by "
-                + ("NVIDIA." if self.nvidia else "the OpenAI-compatible endpoint.")
-            ) from exc
-        except (openai.NotFoundError, openai.PermissionDeniedError) as exc:
-            raise ProviderConfigurationError(
-                f"Model '{self.model}' is not available with this key/endpoint "
-                f"(set PT2EN_OPENAI_MODEL): {exc}"
-            ) from exc
+            raise ProviderConfigurationError(self._key_rejected()) from exc
+        except openai.APIStatusError as exc:
+            # 404 unknown, 410 end of life, 403 not enabled for this account
+            if exc.status_code not in (403, 404, 410):
+                raise TranslationError(str(exc)) from exc
+            self._model_unavailable(model, exc)
+            return self._call(system, user, schema, name)
         except openai.APIError as exc:
             raise TranslationError(str(exc)) from exc
         choice = resp.choices[0]

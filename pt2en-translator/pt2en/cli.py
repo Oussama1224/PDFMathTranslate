@@ -169,6 +169,38 @@ def cmd_doctor(args: argparse.Namespace, settings: Settings) -> int:
     return 0 if ok else 1
 
 
+def cmd_models(args: argparse.Namespace, settings: Settings) -> int:
+    """List (and optionally test) the chat models of the OpenAI-compatible endpoint."""
+    from pt2en.errors import ProviderConfigurationError
+    from pt2en.translation.base import TranslationError
+    from pt2en.translation.providers.openai_provider import (
+        OpenAICompatibleTranslator,
+        probe_model,
+        rank_chat_models,
+    )
+
+    try:
+        provider = OpenAICompatibleTranslator(settings)
+        ranked = rank_chat_models(provider.available_models())
+    except (ProviderConfigurationError, TranslationError) as exc:
+        print(f"error: {getattr(exc, 'message', exc)}")
+        return 1
+    where = "NVIDIA" if provider.nvidia else (settings.openai_endpoint or "OpenAI")
+    print(f"{len(ranked)} chat models at {where}, best for translation first:")
+    checked = 0
+    for model in ranked:
+        status = ""
+        if args.check and checked < args.check:
+            checked += 1
+            status = "  " + probe_model(provider, model)
+        print(f"  {model}{status}")
+    print(
+        "\nTo use one, set PT2EN_OPENAI_MODEL=<id> in .env and restart pt2en serve."
+        "\nLeave it empty to let the app pick the first working model automatically."
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pt2en", description="Layout-preserving PT-PT to English PDF translator"
@@ -207,6 +239,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = sub.add_parser("doctor", help="check OCR, fonts and provider configuration")
     d.set_defaults(func=cmd_doctor)
+
+    ml = sub.add_parser(
+        "models", help="list the chat models your OpenAI-compatible/NVIDIA key can use"
+    )
+    ml.add_argument(
+        "--check",
+        type=int,
+        nargs="?",
+        const=10,
+        default=0,
+        metavar="N",
+        help="send a one-word test request to the first N models (default 10)",
+    )
+    ml.set_defaults(func=cmd_models)
     return parser
 
 

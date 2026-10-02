@@ -18,6 +18,7 @@ from pt2en.translation.base import (  # noqa: E402
 from pt2en.translation.providers.openai_provider import (  # noqa: E402
     OpenAICompatibleTranslator,
     parse_json_reply,
+    rank_chat_models,
 )
 
 REPLY = {"translations": [{"id": "u0", "text": "The <b>mean</b> <m1/>."}]}
@@ -34,15 +35,49 @@ def completion(content, finish_reason="stop"):
     )
 
 
-def api_error(cls, status, message):
+def api_error(cls, status, message, body=None):
     request = httpx.Request("POST", NVIDIA_BASE_URL + "/chat/completions")
-    return cls(message, response=httpx.Response(status, request=request), body=None)
+    return cls(message, response=httpx.Response(status, request=request), body=body)
+
+
+CATALOG = [
+    "nvidia/nv-embedqa-e5-v5",
+    "meta/llama-3.3-70b-instruct",
+    "deepseek-ai/deepseek-v4-pro",
+    "qwen/qwen3.5-397b-a17b",
+    "nvidia/llama-3.1-nemotron-nano-8b-v1",
+    "qwen/qwen2.5-coder-32b-instruct",
+    "meta/llama-3.2-11b-vision-instruct",
+    "deepseek-ai/deepseek-r1",
+]
+RANKED = [
+    "deepseek-ai/deepseek-v4-pro",
+    "qwen/qwen3.5-397b-a17b",
+    "meta/llama-3.3-70b-instruct",
+    "nvidia/llama-3.1-nemotron-nano-8b-v1",
+    "deepseek-ai/deepseek-r1",
+]
 
 
 @pytest.fixture()
-def nvidia(settings):
+def nvidia(settings, monkeypatch):
     settings.openai_api_key = "nvapi-test"
-    return OpenAICompatibleTranslator(settings)
+    provider = OpenAICompatibleTranslator(settings)
+    monkeypatch.setattr(
+        provider.client.models,
+        "list",
+        lambda: [SimpleNamespace(id=m) for m in CATALOG],
+    )
+    return provider
+
+
+def gone(model):
+    return api_error(
+        openai.APIStatusError,
+        410,
+        f"Error code: 410 - {model} is gone",
+        body={"detail": f"The model '{model}' has reached its end of life."},
+    )
 
 
 def translate(provider):
@@ -65,9 +100,59 @@ def test_parse_json_reply_variants(content):
     assert parse_json_reply(content) == REPLY
 
 
-def test_nvidia_key_selects_endpoint_model_and_limit(nvidia, monkeypatch):
+def test_rank_chat_models_prefers_large_general_models():
+    assert rank_chat_models(CATALOG) == RANKED
+
+
+def test_rank_current_nvidia_catalog():
+    # chat-relevant models from build.nvidia.com's free endpoints (Oct 2026)
+    catalog = [
+        "nvidia/body-pose-3d",
+        "deepseek-ai/deepseek-v4.1-flash",
+        "nvidia/kumo-relational",
+        "z-ai/glm-5.3",
+        "z-ai/glm-5.3-flash",
+        "nvidia/nemotron-parse-2.0",
+        "nvidia/parakeet-tdt-0.6b",
+        "moonshotai/kimi-k3",
+        "nvidia/nemotron-3.5-lightning-30b-a3b",
+        "meta/muse-glimmer-30b",
+        "nvidia/riva-translate-4b-instruct-v2",
+        "nvidia/nemotron-3-embed-1b",
+        "poolside/laguna-xs-2.1",
+        "google/diffusiongemma-26b-a4b-it",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/nemotron-3.5-content-safety",
+        "nvidia/cosmos3-nano",
+    ]
+    assert rank_chat_models(catalog)[:5] == [
+        "moonshotai/kimi-k3",
+        "z-ai/glm-5.3",
+        "z-ai/glm-5.3-flash",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "deepseek-ai/deepseek-v4.1-flash",
+    ]
+
+
+def test_rejected_output_limit_is_halved(nvidia, monkeypatch):
+    limits = []
+
+    def create(**kwargs):
+        limits.append(kwargs.get("max_tokens"))
+        if kwargs.get("max_tokens", 0) > 8192:
+            raise api_error(
+                openai.BadRequestError, 400, "max_tokens must be <= 8192 for this model"
+            )
+        return completion(json.dumps(REPLY))
+
+    monkeypatch.setattr(nvidia.client.chat.completions, "create", create)
+    translate(nvidia)
+    assert limits == [16384, 8192]
+
+
+def test_nvidia_key_selects_endpoint_auto_model_and_limit(nvidia, monkeypatch):
     assert str(nvidia.client.base_url).rstrip("/") == NVIDIA_BASE_URL
-    assert nvidia.describe() == "NVIDIA (meta/llama-3.3-70b-instruct)"
+    assert nvidia.describe() == "NVIDIA (auto)"
     captured = {}
 
     def create(**kwargs):
@@ -76,9 +161,79 @@ def test_nvidia_key_selects_endpoint_model_and_limit(nvidia, monkeypatch):
 
     monkeypatch.setattr(nvidia.client.chat.completions, "create", create)
     assert translate(nvidia) == {"u0": "The <b>mean</b> <m1/>."}
-    assert captured["model"] == "meta/llama-3.3-70b-instruct"
-    assert captured["max_tokens"] == 4096
+    assert captured["model"] == RANKED[0]
+    assert nvidia.describe() == f"NVIDIA ({RANKED[0]})"
+    assert captured["max_tokens"] == 16384
     assert captured["response_format"]["type"] == "json_schema"
+
+
+def test_retired_model_switches_to_next_candidate(nvidia, monkeypatch):
+    tried = []
+
+    def create(**kwargs):
+        tried.append(kwargs["model"])
+        if kwargs["model"] in RANKED[:2]:
+            raise gone(kwargs["model"])
+        return completion(json.dumps(REPLY))
+
+    monkeypatch.setattr(nvidia.client.chat.completions, "create", create)
+    assert translate(nvidia) == {"u0": "The <b>mean</b> <m1/>."}
+    assert tried == RANKED[:3]
+    tried.clear()
+    translate(nvidia)  # the working model is remembered
+    assert tried == [RANKED[2]]
+
+
+def test_no_working_model_is_a_configuration_error(nvidia, monkeypatch):
+    def create(**kwargs):
+        raise gone(kwargs["model"])
+
+    monkeypatch.setattr(nvidia.client.chat.completions, "create", create)
+    with pytest.raises(ProviderConfigurationError, match="pt2en models --check"):
+        translate(nvidia)
+
+
+def test_retired_configured_model_is_explained(settings, monkeypatch):
+    settings.openai_api_key = "nvapi-test"
+    settings.openai_model = "meta/llama-3.3-70b-instruct"
+    provider = OpenAICompatibleTranslator(settings)
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs["model"])
+        raise gone(kwargs["model"])
+
+    monkeypatch.setattr(provider.client.chat.completions, "create", create)
+    with pytest.raises(ProviderConfigurationError, match="end of life") as info:
+        translate(provider)
+    assert "pt2en models" in str(info.value) and calls == [settings.openai_model]
+
+
+def test_models_command_lists_and_checks(monkeypatch, capsys):
+    from pt2en import cli
+    from pt2en.translation.providers import openai_provider
+
+    monkeypatch.setattr(
+        openai_provider.OpenAICompatibleTranslator,
+        "available_models",
+        lambda self: CATALOG,
+    )
+    monkeypatch.setattr(
+        openai_provider,
+        "probe_model",
+        lambda provider, model: "ok" if "llama" in model else "unavailable (410)",
+    )
+    from pt2en.config import Settings
+
+    s = Settings(_env_file=None, openai_api_key="nvapi-test")
+    code = cli.cmd_models(SimpleNamespace(check=3), s)
+    out = capsys.readouterr().out
+    assert code == 0
+    lines = [line.strip() for line in out.splitlines() if "/" in line]
+    assert lines[0] == f"{RANKED[0]}  unavailable (410)"
+    assert lines[2] == f"{RANKED[2]}  ok"
+    assert lines[3] == RANKED[3]  # beyond --check 3: not tested
+    assert "PT2EN_OPENAI_MODEL" in out
 
 
 def test_plain_openai_keeps_endpoint_defaults(settings):
@@ -165,7 +320,7 @@ def test_nvidia_alias_and_blank_lines(tmp_path, monkeypatch):
     s = Settings(_env_file=env)
     assert s.openai_api_key == "nvapi-abc"
     assert s.openai_endpoint == NVIDIA_BASE_URL
-    assert s.openai_model_name == "meta/llama-3.3-70b-instruct"
+    assert s.openai_model_name == "auto"
     assert s.provider_available("openai")
 
 
